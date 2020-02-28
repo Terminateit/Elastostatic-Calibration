@@ -105,7 +105,7 @@ def fk(q, theta, links_length):
 def k_theta(stiff_coeffs):
     Ktheta = np.array([[stiff_coeffs[0], 0, 0],
                         [0, stiff_coeffs[1],0],
-                        [0, 0, stiff_coeffs[2]]], dtype = float)
+                        [0, 0, stiff_coeffs[2]]], dtype =float)
     return Ktheta
 
 def J_t(links_length, theta, q):
@@ -153,7 +153,8 @@ if __name__ == "__main__":
         q_t = np.random.uniform(low = 0, high = 1, size = (1,2))
         q = np.array([q_r[0], q_t[0,0], q_t[0,1]])
         Jt, Jt1, Jt2, Jt3 = J_t(links_length, theta, q)
-        dt = np.linalg.multi_dot([Jt, np.linalg.inv(Ktheta), np.transpose(Jt), w]) 
+        eps = np.random.normal(loc = 0.0, scale = 1e-5, size = (6,1))
+        dt = np.linalg.multi_dot([Jt, np.linalg.inv(Ktheta), np.transpose(Jt), w]) + eps
         wt = np.reshape(w[0:3], (3,1))
 
         A1 = np.linalg.multi_dot([Jt1[0:3],np.transpose(Jt1[0:3]),wt])
@@ -168,6 +169,8 @@ if __name__ == "__main__":
 
     ks = np.linalg.multi_dot([np.linalg.inv(A_first), A_second])
     stiffness = np.divide(1, ks)
+
+    print('stiffness = \n', stiffness,'\n')
 
     force = np.array([-440, -1370, -1635, 0, 0, 0], dtype= float)
     
@@ -189,15 +192,7 @@ if __name__ == "__main__":
 
     trag_desired = np.stack([xx,yy,zz])
 
-    # Full model
-    circle1 = np.zeros(trag_desired.shape, dtype = float)
-
-    for i in range(n):
-        q = space_vector_list[:,i]
-        Jt, Jt1, Jt2, Jt3 = J_t(links_length, theta, q)
-        dt = np.linalg.multi_dot([Jt, np.linalg.inv(Ktheta), np.transpose(Jt), force]) 
-        circle1[:,i] = dt[0:3] + trag_desired[:,i]
-    # Reduced
+    # Uncalibrated Trajectory
 
     Ktheta = k_theta(stiffness)
 
@@ -206,21 +201,25 @@ if __name__ == "__main__":
     for i in range(n):
         q = space_vector_list[:,i]
         Jt, Jt1, Jt2, Jt3 = J_t(links_length, theta, q)
-        dt = np.linalg.multi_dot([Jt, np.linalg.inv(Ktheta), np.transpose(Jt), force]) 
+        eps = np.random.normal(loc = 0.0, scale = 1e-5, size = 6)
+        dt = np.linalg.multi_dot([Jt, np.linalg.inv(Ktheta), np.transpose(Jt), force]) + eps
         circle2[:,i] = dt[0:3] + trag_desired[:,i]
 
     diff = trag_desired - circle2 # deflection
 
     upd = trag_desired + diff # new 'initial' trajectory
-
+    for i in range(n):
+        space_vector_list[:,i] = ik([upd[0,i], upd[1,i], upd[2,i]], links_length)
     Ktheta = k_theta(stiff_coeffs) # return old trajectory
 
+    # Calibrated trajectory
     circle3 = np.zeros(trag_desired.shape, dtype = float)
 
     for i in range(n):
         q = space_vector_list[:,i]
         Jt, Jt1, Jt2, Jt3 = J_t(links_length, theta, q)
-        dt = np.linalg.multi_dot([Jt, np.linalg.inv(Ktheta), np.transpose(Jt), force]) 
+        eps = np.random.normal(loc = 0.0, scale = 1e-5, size = 6)
+        dt = np.linalg.multi_dot([Jt, np.linalg.inv(Ktheta), np.transpose(Jt), force]) + eps
         circle3[:,i] = dt[0:3] + upd[:,i]
 
     fig = plt.figure()
@@ -230,7 +229,7 @@ if __name__ == "__main__":
     ax.set_zlabel('Z')
     ax.plot3D(trag_desired[0], trag_desired[1], trag_desired[2], c='green', linewidth=5)
 
-    ax.scatter3D(circle1[0], circle1[1], circle1[2], c='red', linewidth=5)
+    ax.scatter3D(circle2[0], circle2[1], circle2[2], c='red', linewidth=5)
 
     ax.scatter3D(circle3[0], circle3[1], circle3[2], c='blue', linewidth=5)
 
